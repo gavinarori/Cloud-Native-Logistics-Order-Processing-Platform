@@ -1,0 +1,310 @@
+@page "/orders/new"
+@rendermode InteractiveServer
+@inject IOrderService     OrderService
+@inject IInventoryService InventoryService
+@inject NavigationManager Nav
+
+<PageTitle>New Order | LogiOps</PageTitle>
+
+<div class="d-flex align-items-center gap-3 mb-4">
+    <a href="/orders" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-arrow-left me-1"></i>Back
+    </a>
+    <div>
+        <h1 class="h3 mb-0 fw-semibold">Create Order</h1>
+        <small class="text-muted">
+            Write path →
+            <span class="badge bg-warning-subtle text-warning border border-warning-subtle">
+                Azure Service Bus FIFO Queue
+            </span>
+            → Worker Function → Azure SQL
+        </small>
+    </div>
+</div>
+
+@if (_submitted)
+{
+    <div class="card border-success shadow-sm mb-4">
+        <div class="card-body d-flex align-items-center gap-3">
+            <i class="bi bi-check-circle-fill text-success fs-2"></i>
+            <div>
+                <div class="fw-semibold">Order enqueued successfully</div>
+                <div class="text-muted" style="font-size:0.85rem">
+                    Correlation ID: <code>@_correlationId</code><br />
+                    Your command is in the Azure Service Bus queue. The Worker Function will
+                    persist it to Azure SQL and update the order status.
+                </div>
+            </div>
+            <div class="ms-auto d-flex gap-2">
+                <a href="/orders/@_correlationId" class="btn btn-sm btn-outline-primary">Track Order</a>
+                <button class="btn btn-sm btn-primary" @onclick="ResetForm">New Order</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_error is not null)
+{
+    <div class="alert alert-danger d-flex gap-2 align-items-center">
+        <i class="bi bi-exclamation-triangle-fill"></i>
+        <span>@_error</span>
+        <button class="btn-close ms-auto" @onclick="() => _error = null"></button>
+    </div>
+}
+
+<div class="row g-4">
+    <!-- Customer details -->
+    <div class="col-lg-5">
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white fw-semibold border-bottom">
+                <i class="bi bi-person-fill me-2 text-primary"></i>Customer Details
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">Full Name <span class="text-danger">*</span></label>
+                    <input class="form-control @(_formErrors.ContainsKey("name") ? "is-invalid" : "")"
+                           @bind="_command.CustomerName" placeholder="Jane Smith" />
+                    @if (_formErrors.TryGetValue("name", out var nameErr))
+                    {
+                        <div class="invalid-feedback">@nameErr</div>
+                    }
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Email <span class="text-danger">*</span></label>
+                    <input class="form-control @(_formErrors.ContainsKey("email") ? "is-invalid" : "")"
+                           type="email"
+                           @bind="_command.CustomerEmail" placeholder="jane@example.com" />
+                    @if (_formErrors.TryGetValue("email", out var emailErr))
+                    {
+                        <div class="invalid-feedback">@emailErr</div>
+                    }
+                    <div class="form-text">
+                        Also used as the Service Bus <strong>SessionId</strong> for FIFO ordering.
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Region <span class="text-danger">*</span></label>
+                    <select class="form-select @(_formErrors.ContainsKey("region") ? "is-invalid" : "")"
+                            @bind="_command.Region">
+                        <option value="">Select region…</option>
+                        <option>AMER</option>
+                        <option>EMEA</option>
+                        <option>APAC</option>
+                    </select>
+                    @if (_formErrors.TryGetValue("region", out var regionErr))
+                    {
+                        <div class="invalid-feedback">@regionErr</div>
+                    }
+                    <div class="form-text">
+                        Used as the Cosmos DB partition key for read-model distribution.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- CQRS info box -->
+        <div class="card border-0 bg-info-subtle border-info-subtle shadow-sm">
+            <div class="card-body" style="font-size:0.82rem">
+                <div class="fw-semibold mb-2">
+                    <i class="bi bi-info-circle-fill text-info me-1"></i>How this write works
+                </div>
+                <ol class="mb-0 ps-3">
+                    <li class="mb-1">Command serialised → sent to <strong>Service Bus (FIFO queue)</strong></li>
+                    <li class="mb-1"><strong>Worker Function</strong> dequeues &amp; writes to <strong>Azure SQL</strong> (ACID)</li>
+                    <li class="mb-1">Change Data Capture syncs to <strong>Cosmos DB</strong> read replica</li>
+                    <li><strong>Redis cache</strong> invalidated; dashboard reflects new order</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+
+    <!-- Order items -->
+    <div class="col-lg-7">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white border-bottom d-flex align-items-center justify-content-between">
+                <span class="fw-semibold"><i class="bi bi-bag-fill me-2 text-primary"></i>Order Items</span>
+                <button class="btn btn-sm btn-outline-primary" @onclick="AddItem">
+                    <i class="bi bi-plus-lg me-1"></i>Add Item
+                </button>
+            </div>
+            <div class="card-body">
+                @if (_command.Items.Count == 0)
+                {
+                    <div class="text-center text-muted py-4">
+                        <i class="bi bi-bag fs-1 d-block mb-2"></i>
+                        No items yet. Click "Add Item".
+                    </div>
+                }
+                else
+                {
+                    @foreach (var (item, idx) in _command.Items.Select((i, n) => (i, n)))
+                    {
+                        <div class="border rounded p-3 mb-3">
+                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                <span class="fw-semibold text-muted" style="font-size:0.82rem">
+                                    Item #@(idx + 1)
+                                </span>
+                                <button class="btn btn-sm btn-link text-danger p-0"
+                                        @onclick="() => RemoveItem(idx)">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                            <div class="row g-2">
+                                <div class="col-md-6">
+                                    <label class="form-label form-label-sm">SKU</label>
+                                    <select class="form-select form-select-sm"
+                                            @bind="item.Sku"
+                                            @bind:after="() => OnSkuChanged(item)">
+                                        <option value="">Select product…</option>
+                                        @foreach (var inv in _inventory)
+                                        {
+                                            <option value="@inv.Sku"
+                                                    disabled="@(inv.Status == StockStatus.OutOfStock)">
+                                                @inv.Sku — @inv.ProductName
+                                                @(inv.Status == StockStatus.OutOfStock ? "(Out of stock)" : "")
+                                            </option>
+                                        }
+                                    </select>
+                                </div>
+                                <div class="col-4 col-md-3">
+                                    <label class="form-label form-label-sm">Qty</label>
+                                    <input type="number" class="form-control form-control-sm"
+                                           min="1" @bind="item.Quantity" />
+                                </div>
+                                <div class="col-8 col-md-3">
+                                    <label class="form-label form-label-sm">Unit Price</label>
+                                    <div class="input-group input-group-sm">
+                                        <span class="input-group-text">$</span>
+                                        <input type="number" class="form-control" step="0.01"
+                                               @bind="item.UnitPrice" />
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="text-end text-muted mt-1" style="font-size:0.8rem">
+                                Line total: <strong>@((item.Quantity * item.UnitPrice).ToString("C2"))</strong>
+                            </div>
+                        </div>
+                    }
+                }
+
+                @if (_formErrors.TryGetValue("items", out var itemsErr))
+                {
+                    <div class="alert alert-warning py-2">@itemsErr</div>
+                }
+            </div>
+
+            <!-- Order total + submit -->
+            <div class="card-footer bg-white border-top">
+                <div class="d-flex align-items-center justify-content-between">
+                    <div>
+                        <div class="text-muted" style="font-size:0.82rem">Order Total</div>
+                        <div class="fs-4 fw-bold">
+                            @(_command.Items.Sum(i => i.Quantity * i.UnitPrice).ToString("C2"))
+                        </div>
+                    </div>
+                    <button class="btn btn-primary btn-lg"
+                            disabled="@_submitting"
+                            @onclick="SubmitOrder">
+                        @if (_submitting)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2"></span>
+                            <span>Sending to Service Bus…</span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-send-fill me-2"></i>
+                            <span>Place Order</span>
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private CreateOrderCommand         _command      = new();
+    private List<InventoryItem>        _inventory    = [];
+    private Dictionary<string, string> _formErrors   = [];
+    private bool   _submitting  = false;
+    private bool   _submitted   = false;
+    private Guid   _correlationId;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _inventory = await InventoryService.GetInventoryAsync();
+    }
+
+    private void AddItem()
+    {
+        _command.Items.Add(new OrderItemDto { Quantity = 1 });
+    }
+
+    private void RemoveItem(int index)
+    {
+        if (index >= 0 && index < _command.Items.Count)
+            _command.Items.RemoveAt(index);
+    }
+
+    private async Task OnSkuChanged(OrderItemDto item)
+    {
+        var inv = _inventory.FirstOrDefault(i => i.Sku == item.Sku);
+        if (inv is not null)
+        {
+            item.ProductId = inv.ProductId;
+            item.UnitPrice = 0; // Real price comes from the Order microservice catalog lookup
+        }
+    }
+
+    private bool Validate()
+    {
+        _formErrors.Clear();
+
+        if (string.IsNullOrWhiteSpace(_command.CustomerName))
+            _formErrors["name"] = "Customer name is required.";
+
+        if (string.IsNullOrWhiteSpace(_command.CustomerEmail) ||
+            !_command.CustomerEmail.Contains('@'))
+            _formErrors["email"] = "A valid email is required.";
+
+        if (string.IsNullOrWhiteSpace(_command.Region))
+            _formErrors["region"] = "Region is required.";
+
+        if (_command.Items.Count == 0)
+            _formErrors["items"] = "At least one item is required.";
+        else if (_command.Items.Any(i => string.IsNullOrWhiteSpace(i.Sku) || i.Quantity < 1))
+            _formErrors["items"] = "All items must have a SKU and quantity ≥ 1.";
+
+        return _formErrors.Count == 0;
+    }
+
+    private async Task SubmitOrder()
+    {
+        if (!Validate()) return;
+
+        _submitting = true;
+        _error      = null;
+
+        try
+        {
+            _correlationId = await OrderService.EnqueueOrderAsync(_command);
+            _submitted     = true;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to enqueue order: {ex.Message}";
+        }
+        finally
+        {
+            _submitting = false;
+        }
+    }
+
+    private void ResetForm()
+    {
+        _command    = new CreateOrderCommand();
+        _submitted  = false;
+        _formErrors.Clear();
+    }
+}

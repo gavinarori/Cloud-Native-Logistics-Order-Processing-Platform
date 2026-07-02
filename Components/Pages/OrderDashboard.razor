@@ -1,0 +1,161 @@
+@page "/orders"
+@attribute [StreamRendering]
+@rendermode InteractiveServer
+@inject IOrderService OrderService
+
+<PageTitle>Orders | LogiOps</PageTitle>
+
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+        <h1 class="h3 mb-0 fw-semibold">Orders</h1>
+        <small class="text-muted">
+            Read model — Azure SQL Business Critical (read replica)
+        </small>
+    </div>
+    <a href="/orders/new" class="btn btn-primary">
+        <i class="bi bi-plus-lg me-1"></i>New Order
+    </a>
+</div>
+
+<!-- Filters -->
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body d-flex gap-3 align-items-center flex-wrap py-2">
+        <div class="d-flex align-items-center gap-2">
+            <label class="text-muted" style="font-size:0.85rem">Status</label>
+            <select class="form-select form-select-sm" style="width:auto"
+                    @bind="_statusFilter" @bind:after="LoadOrders">
+                <option value="">All</option>
+                @foreach (var s in Enum.GetValues<OrderStatus>())
+                {
+                    <option value="@s">@s</option>
+                }
+            </select>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <label class="text-muted" style="font-size:0.85rem">Region</label>
+            <select class="form-select form-select-sm" style="width:auto"
+                    @bind="_regionFilter" @bind:after="LoadOrders">
+                <option value="">All regions</option>
+                <option>EMEA</option>
+                <option>APAC</option>
+                <option>AMER</option>
+            </select>
+        </div>
+        <div class="ms-auto text-muted" style="font-size:0.82rem">
+            Showing @_orders.Count orders (page @_page)
+        </div>
+    </div>
+</div>
+
+<!-- Orders table -->
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        @if (_loading)
+        {
+            <div class="p-5 text-center text-muted">
+                <div class="spinner-border text-primary mb-2"></div>
+                <div>Fetching from Azure SQL read replica…</div>
+            </div>
+        }
+        else if (_orders.Count == 0)
+        {
+            <div class="p-5 text-center text-muted">
+                <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                No orders found. <a href="/orders/new">Create the first one</a>.
+            </div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Order ID</th>
+                            <th>Customer</th>
+                            <th>Region</th>
+                            <th class="text-end">Items</th>
+                            <th class="text-end">Total</th>
+                            <th>Status</th>
+                            <th>Created (UTC)</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var order in _orders)
+                        {
+                            <tr>
+                                <td class="font-monospace text-muted" style="font-size:0.82rem">
+                                    @order.Id.ToString()[..8]
+                                </td>
+                                <td>
+                                    <div class="fw-semibold">@order.CustomerName</div>
+                                    <small class="text-muted">@order.CustomerEmail</small>
+                                </td>
+                                <td>
+                                    <span class="badge bg-secondary-subtle text-secondary border">@order.Region</span>
+                                </td>
+                                <td class="text-end">@order.TotalItems</td>
+                                <td class="text-end fw-semibold">@order.TotalAmount.ToString("C2")</td>
+                                <td><StatusBadge Status="order.Status" /></td>
+                                <td class="text-muted" style="font-size:0.82rem">
+                                    @order.CreatedAt.ToString("dd MMM HH:mm")
+                                </td>
+                                <td>
+                                    <a href="/orders/@order.Id" class="btn btn-sm btn-outline-secondary">
+                                        <i class="bi bi-eye"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Pagination -->
+            <div class="d-flex justify-content-end gap-2 p-3 border-top">
+                <button class="btn btn-sm btn-outline-secondary"
+                        disabled="@(_page <= 1)"
+                        @onclick="PrevPage">
+                    <i class="bi bi-chevron-left"></i> Prev
+                </button>
+                <span class="btn btn-sm btn-light disabled">Page @_page</span>
+                <button class="btn btn-sm btn-outline-secondary"
+                        disabled="@(_orders.Count < _pageSize)"
+                        @onclick="NextPage">
+                    Next <i class="bi bi-chevron-right"></i>
+                </button>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private List<Order> _orders     = [];
+    private bool        _loading    = true;
+    private int         _page       = 1;
+    private const int   _pageSize   = 20;
+    private string      _statusFilter = "";
+    private string      _regionFilter = "";
+
+    protected override async Task OnInitializedAsync() => await LoadOrders();
+
+    private async Task LoadOrders()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        _orders = await OrderService.GetOrdersAsync(_page, _pageSize);
+
+        // Client-side filter until server-side filtering is added to the API
+        if (!string.IsNullOrEmpty(_statusFilter) && Enum.TryParse<OrderStatus>(_statusFilter, out var status))
+            _orders = _orders.Where(o => o.Status == status).ToList();
+
+        if (!string.IsNullOrEmpty(_regionFilter))
+            _orders = _orders.Where(o => o.Region == _regionFilter).ToList();
+
+        _loading = false;
+    }
+
+    private async Task NextPage() { _page++; await LoadOrders(); }
+    private async Task PrevPage() { if (_page > 1) { _page--; await LoadOrders(); } }
+}

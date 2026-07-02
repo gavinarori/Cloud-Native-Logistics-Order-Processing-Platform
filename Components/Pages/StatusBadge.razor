@@ -1,0 +1,18 @@
+@* Maps OrderStatus enum to a Bootstrap badge *@
+
+<span class="badge @CssClass">@Status</span>
+
+@code {
+    [Parameter, EditorRequired] public OrderStatus Status { get; set; }
+
+    private string CssClass => Status switch
+    {
+        OrderStatus.Pending    => "bg-secondary",
+        OrderStatus.Queued     => "bg-warning text-dark",
+        OrderStatus.Processing => "bg-info text-dark",
+        OrderStatus.Fulfilled  => "bg-success",
+        OrderStatus.Cancelled  => "bg-secondary",
+        OrderStatus.Failed     => "bg-danger",
+        _                      => "bg-secondary"
+    };
+}

@@ -10,8 +10,8 @@ build_property.PlatformNeutralAssembly =
 build_property.EnforceExtendedAnalyzerRules = 
 build_property.EntryPointFilePath = 
 build_property._SupportedPlatformList = Linux,macOS,Windows
-build_property.RootNamespace = BlazorApp1
-build_property.RootNamespace = BlazorApp1
+build_property.RootNamespace = LogisticsWeb
+build_property.RootNamespace = LogisticsWeb
 build_property.ProjectDir = /Users/mac/Desktop/learn/BlazorApp1/BlazorApp1/
 build_property.EnableComHosting = 
 build_property.EnableGeneratedComInterfaceComImportInterop = 
@@ -97,12 +97,12 @@ build_metadata.AdditionalFiles.CssScope =
 
 [/Users/mac/Desktop/learn/BlazorApp1/BlazorApp1/Components/Layout/MainLayout.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9MYXlvdXQvTWFpbkxheW91dC5yYXpvcg==
-build_metadata.AdditionalFiles.CssScope = b-nz1yiwl0um
+build_metadata.AdditionalFiles.CssScope = b-v6mugl6cwc
 
 [/Users/mac/Desktop/learn/BlazorApp1/BlazorApp1/Components/Layout/NavMenu.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9MYXlvdXQvTmF2TWVudS5yYXpvcg==
-build_metadata.AdditionalFiles.CssScope = b-zjo6z1fhij
+build_metadata.AdditionalFiles.CssScope = b-sngn2trrn2
 
 [/Users/mac/Desktop/learn/BlazorApp1/BlazorApp1/Components/Layout/ReconnectModal.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9MYXlvdXQvUmVjb25uZWN0TW9kYWwucmF6b3I=
-build_metadata.AdditionalFiles.CssScope = b-jqca3m50ec
+build_metadata.AdditionalFiles.CssScope = b-jgguafy7gc

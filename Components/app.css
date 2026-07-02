@@ -1,0 +1,78 @@
+/* ═══════════════════════════════════════════════════════════
+   LogiOps — Cloud-Native Logistics Platform
+   App Shell Styles
+═══════════════════════════════════════════════════════════ */
+
+/* App shell — fills the viewport */
+html, body {
+    height: 100%;
+    margin: 0;
+}
+
+.app-shell {
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* Sidebar */
+.sidebar {
+    overflow-y: auto;
+    flex-shrink: 0;
+    transition: width 0.2s ease;
+}
+
+.sidebar .nav-link {
+    transition: background-color 0.15s ease;
+}
+
+.sidebar .nav-link:hover:not(.active) {
+    background-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Main content */
+.main-content {
+    overflow-y: auto;
+}
+
+.page-body {
+    min-height: 0;
+}
+
+/* Topbar */
+.topbar {
+    height: 56px;
+    flex-shrink: 0;
+}
+
+/* Cards */
+.card {
+    border-radius: 0.75rem;
+}
+
+/* Tables */
+.table > :not(caption) > * > * {
+    padding: 0.75rem 1rem;
+}
+
+/* Font monospace utility */
+.font-monospace {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.85em;
+}
+
+/* ── Blazor error UI ──────────────────────────────────────── */
+#blazor-error-ui {
+    position: fixed;
+    bottom: 1rem;
+    right: 1rem;
+    left: auto;
+    width: 400px;
+    z-index: 9999;
+}
+
+/* ── Responsive: collapse sidebar on small screens ─────────── */
+@media (max-width: 991.98px) {
+    .sidebar {
+        display: none !important;
+    }
+}

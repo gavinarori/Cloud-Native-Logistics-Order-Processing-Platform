@@ -1,9 +1,210 @@
 ﻿@page "/"
+@attribute [StreamRendering]
+@rendermode InteractiveServer
+@inject IOrderService     OrderService
+@inject IInventoryService InventoryService
 
-<PageTitle>Home</PageTitle>
+<PageTitle>Dashboard | LogiOps</PageTitle>
 
-<h1>Hello, world!</h1>
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+        <h1 class="h3 mb-0 fw-semibold">Operations Dashboard</h1>
+        <small class="text-muted">
+            Live data · Read model served from
+            <span class="badge bg-info-subtle text-info border border-info-subtle">Azure Cache for Redis</span>
+        </small>
+    </div>
+    <div class="text-end">
+        <div class="text-muted" style="font-size:0.8rem">@DateTime.UtcNow.ToString("ddd dd MMM yyyy · HH:mm") UTC</div>
+    </div>
+</div>
 
-Welcome to your new app.
+<!-- ── KPI CARDS ── -->
+@if (_orderSummary is null || _inventorySummary is null)
+{
+    <div class="row g-3 mb-4">
+        @for (int i = 0; i < 6; i++)
+        {
+            <div class="col-sm-6 col-xl-4">
+                <div class="card border-0 shadow-sm placeholder-glow">
+                    <div class="card-body">
+                        <span class="placeholder col-6 mb-2"></span>
+                        <span class="placeholder col-4 fs-3"></span>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+else
+{
+    <div class="row g-3 mb-4">
+        <div class="col-sm-6 col-xl-4">
+            <KpiCard Icon="bi-cart-check-fill"
+                     Title="Orders Today"
+                     Value="@_orderSummary.FulfilledToday.ToString()"
+                     Delta="+12% vs yesterday"
+                     Color="primary" />
+        </div>
+        <div class="col-sm-6 col-xl-4">
+            <KpiCard Icon="bi-hourglass-split"
+                     Title="Pending in Queue"
+                     Value="@_orderSummary.PendingOrders.ToString()"
+                     Delta="Azure Service Bus FIFO"
+                     Color="warning" />
+        </div>
+        <div class="col-sm-6 col-xl-4">
+            <KpiCard Icon="bi-currency-dollar"
+                     Title="Revenue Today"
+                     Value="@_orderSummary.RevenueToday.ToString("C0")"
+                     Delta="@($"MTD: {_orderSummary.RevenueThisMonth:C0}")"
+                     Color="success" />
+        </div>
+        <div class="col-sm-6 col-xl-4">
+            <KpiCard Icon="bi-exclamation-triangle-fill"
+                     Title="Failed Orders"
+                     Value="@_orderSummary.FailedOrders.ToString()"
+                     Delta="Dead-letter queue"
+                     Color="danger" />
+        </div>
+        <div class="col-sm-6 col-xl-4">
+            <KpiCard Icon="bi-boxes"
+                     Title="Low Stock SKUs"
+                     Value="@_inventorySummary.LowStockCount.ToString()"
+                     Delta="Reorder threshold breached"
+                     Color="warning" />
+        </div>
+        <div class="col-sm-6 col-xl-4">
+            <KpiCard Icon="bi-x-circle-fill"
+                     Title="Out of Stock"
+                     Value="@_inventorySummary.OutOfStockCount.ToString()"
+                     Delta="Requires immediate action"
+                     Color="danger" />
+        </div>
+    </div>
+}
 
-<Counter IncrementAmount="10" />
+<!-- ── ARCHITECTURE FLOW DIAGRAM ── -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white border-bottom fw-semibold">
+        <i class="bi bi-diagram-3 me-2 text-primary"></i>Live Request Flow
+    </div>
+    <div class="card-body">
+        <div class="d-flex align-items-center gap-2 flex-wrap" style="font-size:0.82rem">
+            <FlowNode Icon="bi-globe2"       Label="Client" Color="secondary" />
+            <FlowArrow />
+            <FlowNode Icon="bi-shield-check" Label="Front Door / WAF" Color="info" />
+            <FlowArrow />
+            <FlowNode Icon="bi-grid-3x3"     Label="API Management" Color="info" />
+            <FlowArrow />
+            <div class="d-flex flex-column gap-2">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge bg-warning-subtle text-warning border border-warning-subtle px-2 py-1">WRITE</span>
+                    <FlowNode Icon="bi-send-fill"      Label="Order Svc" Color="primary" />
+                    <FlowArrow />
+                    <FlowNode Icon="bi-envelope-fill"  Label="Service Bus" Color="primary" />
+                    <FlowArrow />
+                    <FlowNode Icon="bi-lightning-fill" Label="Worker Fn" Color="primary" />
+                    <FlowArrow />
+                    <FlowNode Icon="bi-database-fill"  Label="Azure SQL" Color="dark" />
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge bg-info-subtle text-info border border-info-subtle px-2 py-1">READ</span>
+                    <FlowNode Icon="bi-eye-fill"       Label="Inventory Svc" Color="success" />
+                    <FlowArrow />
+                    <FlowNode Icon="bi-lightning-fill" Label="Redis / Cosmos" Color="success" />
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── RECENT ORDERS TABLE ── -->
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white border-bottom d-flex align-items-center justify-content-between">
+        <span class="fw-semibold"><i class="bi bi-list-ul me-2 text-primary"></i>Recent Orders</span>
+        <a href="/orders" class="btn btn-sm btn-outline-primary">View all <i class="bi bi-arrow-right ms-1"></i></a>
+    </div>
+    <div class="card-body p-0">
+        @if (_recentOrders is null)
+        {
+            <div class="p-4 text-center text-muted">
+                <div class="spinner-border spinner-border-sm me-2"></div>Loading orders...
+            </div>
+        }
+        else if (_recentOrders.Count == 0)
+        {
+            <div class="p-4 text-center text-muted">No orders yet.</div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Order ID</th>
+                            <th>Customer</th>
+                            <th>Region</th>
+                            <th>Items</th>
+                            <th>Amount</th>
+                            <th>Status</th>
+                            <th>Created</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var order in _recentOrders)
+                        {
+                            <tr>
+                                <td>
+                                    <a href="/orders/@order.Id" class="font-monospace text-decoration-none">
+                                        @order.Id.ToString()[..8]…
+                                    </a>
+                                </td>
+                                <td>
+                                    <div>@order.CustomerName</div>
+                                    <small class="text-muted">@order.CustomerEmail</small>
+                                </td>
+                                <td><span class="badge bg-secondary-subtle text-secondary border">@order.Region</span></td>
+                                <td>@order.TotalItems</td>
+                                <td class="fw-semibold">@order.TotalAmount.ToString("C2")</td>
+                                <td><StatusBadge Status="order.Status" /></td>
+                                <td class="text-muted" style="font-size:0.82rem">
+                                    @order.CreatedAt.ToString("HH:mm dd MMM")
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private OrderSummary?    _orderSummary;
+    private InventorySummary? _inventorySummary;
+    private List<Order>?      _recentOrders;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Fan-out concurrently — don't await sequentially
+        var orderSummaryTask    = OrderService.GetOrderSummaryAsync();
+        var inventorySummaryTask = InventoryService.GetSummaryAsync();
+        var recentOrdersTask    = OrderService.GetOrdersAsync(page: 1, pageSize: 8);
+
+        await Task.WhenAll(orderSummaryTask, inventorySummaryTask, recentOrdersTask);
+
+        _orderSummary     = await orderSummaryTask;
+        _inventorySummary = await inventorySummaryTask;
+        _recentOrders     = await recentOrdersTask;
+    }
+}
+
+<!-- ── INLINE CHILD COMPONENTS ── -->
+
+@* KPI Card *@
+@* (Defined as nested for single-file simplicity; extract to Components/ as the project grows) *@
+
+@code {
+    // KpiCard, FlowNode, FlowArrow, StatusBadge defined below as local render fragments
+}
