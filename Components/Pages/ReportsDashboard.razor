@@ -1,0 +1,154 @@
+@page "/reports"
+@attribute [StreamRendering]
+@rendermode InteractiveServer
+@inject IOrderService     OrderService
+@inject IInventoryService InventoryService
+
+<PageTitle>Reports | LogiOps</PageTitle>
+
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+        <h1 class="h3 mb-0 fw-semibold">Reports & Analytics</h1>
+        <small class="text-muted">
+            Powered by
+            <span class="badge bg-secondary-subtle text-secondary border">Cosmos DB</span>
+            — isolated from write workload (solves the Noisy Neighbor problem)
+        </small>
+    </div>
+</div>
+
+<!-- Architecture callout -->
+<div class="alert alert-info d-flex gap-3 align-items-start border-0 shadow-sm mb-4" role="note">
+    <i class="bi bi-info-circle-fill fs-4 flex-shrink-0 mt-1"></i>
+    <div style="font-size:0.88rem">
+        <strong>Why reports never slow down checkout:</strong> Heavy analytical queries run
+        against <strong>Azure Cosmos DB</strong> (the read model), which is asynchronously
+        populated from Azure SQL via CDC / Azure Data Factory. The primary SQL database is
+        never queried here, so report traffic cannot create lock contention on checkout
+        transactions — this is the core fix for the <em>Noisy Neighbor</em> problem.
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border text-primary mb-2"></div>
+        <div class="text-muted">Loading from Cosmos DB read replica…</div>
+    </div>
+}
+else
+{
+    <div class="row g-4">
+        <!-- Revenue summary -->
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white border-bottom fw-semibold">
+                    <i class="bi bi-currency-dollar me-2 text-success"></i>Revenue Summary
+                </div>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between py-2 border-bottom">
+                        <span class="text-muted">Today</span>
+                        <strong>@_orderSummary?.RevenueToday.ToString("C2")</strong>
+                    </div>
+                    <div class="d-flex justify-content-between py-2 border-bottom">
+                        <span class="text-muted">Month-to-Date</span>
+                        <strong>@_orderSummary?.RevenueThisMonth.ToString("C2")</strong>
+                    </div>
+                    <div class="d-flex justify-content-between py-2 border-bottom">
+                        <span class="text-muted">Orders Fulfilled Today</span>
+                        <strong>@_orderSummary?.FulfilledToday</strong>
+                    </div>
+                    <div class="d-flex justify-content-between py-2">
+                        <span class="text-muted">Failed / Dead-lettered</span>
+                        <strong class="text-danger">@_orderSummary?.FailedOrders</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Inventory health -->
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white border-bottom fw-semibold">
+                    <i class="bi bi-boxes me-2 text-primary"></i>Inventory Health
+                </div>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between py-2 border-bottom">
+                        <span class="text-muted">Total SKUs</span>
+                        <strong>@_inventorySummary?.TotalProducts</strong>
+                    </div>
+                    <div class="d-flex justify-content-between py-2 border-bottom">
+                        <span class="text-muted">Total Units on Hand</span>
+                        <strong>@_inventorySummary?.TotalUnits.ToString("N0")</strong>
+                    </div>
+                    <div class="d-flex justify-content-between py-2 border-bottom">
+                        <span class="text-muted">Low Stock Alerts</span>
+                        <strong class="text-warning">@_inventorySummary?.LowStockCount</strong>
+                    </div>
+                    <div class="d-flex justify-content-between py-2">
+                        <span class="text-muted">Out of Stock</span>
+                        <strong class="text-danger">@_inventorySummary?.OutOfStockCount</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Architecture proof card -->
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-bottom fw-semibold">
+                    <i class="bi bi-diagram-3 me-2 text-primary"></i>
+                    Data Flow: Read/Write Separation (CQRS)
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <div class="rounded p-3 bg-warning-subtle border border-warning-subtle">
+                                <div class="fw-semibold mb-1 text-warning-emphasis">
+                                    <i class="bi bi-send-fill me-2"></i>Write Path
+                                </div>
+                                <ol class="mb-0 ps-3" style="font-size:0.85rem">
+                                    <li>Client POSTs order → <strong>Order Microservice</strong></li>
+                                    <li>Serialised → <strong>Service Bus FIFO Queue</strong> (MessageId = CorrelationId)</li>
+                                    <li><strong>Worker Function</strong> dequeues &amp; writes <strong>Azure SQL</strong> (ACID)</li>
+                                    <li>Row locked during stock reservation (<code>UPDLOCK</code>)</li>
+                                </ol>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="rounded p-3 bg-info-subtle border border-info-subtle">
+                                <div class="fw-semibold mb-1 text-info-emphasis">
+                                    <i class="bi bi-eye-fill me-2"></i>Read Path (this page)
+                                </div>
+                                <ol class="mb-0 ps-3" style="font-size:0.85rem">
+                                    <li>CDC pushes SQL changes → <strong>Cosmos DB</strong> via Data Factory</li>
+                                    <li>Inventory Microservice reads Cosmos DB (partitioned by Region)</li>
+                                    <li><strong>Redis</strong> caches aggregates (TTL 5 min)</li>
+                                    <li>Zero lock contention on primary SQL — checkout never blocks</li>
+                                </ol>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private OrderSummary?     _orderSummary;
+    private InventorySummary? _inventorySummary;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var t1 = OrderService.GetOrderSummaryAsync();
+        var t2 = InventoryService.GetSummaryAsync();
+
+        await Task.WhenAll(t1, t2);
+
+        _orderSummary     = await t1;
+        _inventorySummary = await t2;
+        _loading          = false;
+    }
+}

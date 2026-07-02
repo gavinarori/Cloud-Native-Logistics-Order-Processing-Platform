@@ -1,0 +1,40 @@
+
+<div class="d-flex gap-3 @(IsLast ? "" : "mb-3")">
+    <!-- Icon column -->
+    <div class="d-flex flex-column align-items-center">
+        <div class="rounded-circle p-2 @IconBg" style="width:36px;height:36px;display:flex;align-items:center;justify-content:center">
+            <i class="bi @Icon @IconColor" style="font-size:0.85rem"></i>
+        </div>
+        @if (!IsLast)
+        {
+            <div class="border-start border-2 @(Completed ? "border-success" : "border-secondary-subtle") flex-grow-1 mt-1" style="width:0"></div>
+        }
+    </div>
+
+    <!-- Text column -->
+    <div class="pb-3">
+        <div class="fw-semibold @(Active ? "text-primary" : "")">@Label</div>
+        <small class="text-muted">@Description</small>
+        @if (Active)
+        {
+            <div class="mt-1">
+                <span class="badge bg-primary-subtle text-primary border border-primary-subtle">
+                    <span class="spinner-grow spinner-grow-sm me-1" style="width:.5rem;height:.5rem"></span>
+                    In progress
+                </span>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Icon        { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public string Label       { get; set; } = string.Empty;
+    [Parameter]                 public string Description { get; set; } = string.Empty;
+    [Parameter]                 public bool   Completed   { get; set; }
+    [Parameter]                 public bool   Active      { get; set; }
+    [Parameter]                 public bool   IsLast      { get; set; }
+
+    private string IconBg    => Completed ? "bg-success-subtle" : Active ? "bg-primary-subtle" : "bg-secondary-subtle";
+    private string IconColor => Completed ? "text-success"      : Active ? "text-primary"      : "text-secondary";
+}

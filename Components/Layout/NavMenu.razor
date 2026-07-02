@@ -1,30 +1,89 @@
-﻿<div class="top-row ps-3 navbar navbar-dark">
-    <div class="container-fluid">
-        <a class="navbar-brand" href="">BlazorApp1</a>
+﻿@rendermode InteractiveServer
+@inject NavigationManager Nav
+
+<nav class="sidebar d-flex flex-column bg-dark text-white" style="min-height:100vh; width:260px; min-width:260px;">
+
+    <!-- Brand -->
+    <div class="sidebar-brand px-4 py-3 border-bottom border-secondary d-flex align-items-center gap-2">
+        <i class="bi bi-box-seam-fill text-primary fs-4"></i>
+        <div>
+            <div class="fw-bold fs-5 lh-1">LogiOps</div>
+            <small class="text-secondary" style="font-size:0.7rem">Cloud-Native Platform</small>
+        </div>
     </div>
-</div>
 
-<input type="checkbox" title="Navigation menu" class="navbar-toggler" />
+    <!-- Navigation links -->
+    <ul class="nav flex-column px-2 mt-3 flex-grow-1">
 
-<div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
-    <nav class="nav flex-column">
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Home
+        <li class="nav-item">
+            <NavLink class="nav-link text-white rounded px-3 py-2 mb-1"
+                     href="/"
+                     Match="NavLinkMatch.All"
+                     ActiveClass="bg-primary text-white">
+                <i class="bi bi-speedometer2 me-2"></i>Dashboard
             </NavLink>
-        </div>
+        </li>
 
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="counter">
-                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Counter
+        <li class="mt-2 mb-1 px-3">
+            <small class="text-secondary text-uppercase" style="font-size:0.7rem; letter-spacing:.05em">
+                Operations
+            </small>
+        </li>
+
+        <li class="nav-item">
+            <NavLink class="nav-link text-white rounded px-3 py-2 mb-1"
+                     href="/orders"
+                     ActiveClass="bg-primary text-white">
+                <i class="bi bi-cart3 me-2"></i>Orders
             </NavLink>
-        </div>
+        </li>
 
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="weather">
-                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Weather
+        <li class="nav-item">
+            <NavLink class="nav-link text-white rounded px-3 py-2 mb-1"
+                     href="/orders/new"
+                     ActiveClass="bg-primary text-white">
+                <i class="bi bi-plus-circle me-2"></i>New Order
             </NavLink>
-        </div>
-    </nav>
-</div>
+        </li>
 
+        <li class="nav-item">
+            <NavLink class="nav-link text-white rounded px-3 py-2 mb-1"
+                     href="/inventory"
+                     ActiveClass="bg-primary text-white">
+                <i class="bi bi-boxes me-2"></i>Inventory
+            </NavLink>
+        </li>
+
+        <li class="mt-2 mb-1 px-3">
+            <small class="text-secondary text-uppercase" style="font-size:0.7rem; letter-spacing:.05em">
+                Analytics
+            </small>
+        </li>
+
+        <li class="nav-item">
+            <NavLink class="nav-link text-white rounded px-3 py-2 mb-1"
+                     href="/reports"
+                     ActiveClass="bg-primary text-white">
+                <i class="bi bi-bar-chart-line me-2"></i>Reports
+            </NavLink>
+        </li>
+    </ul>
+
+    <!-- Architecture badge at bottom -->
+    <div class="px-3 py-3 border-top border-secondary">
+        <div class="rounded p-2 bg-dark border border-secondary" style="font-size:0.7rem">
+            <div class="text-secondary mb-1">Architecture</div>
+            <div class="d-flex flex-wrap gap-1">
+                <span class="badge bg-secondary">CQRS</span>
+                <span class="badge bg-secondary">Service Bus</span>
+                <span class="badge bg-secondary">Redis</span>
+                <span class="badge bg-secondary">Cosmos DB</span>
+            </div>
+        </div>
+    </div>
+</nav>
+
+@code {
+    // Nav state managed via NavigationManager — no local toggle needed
+    // (CSS handles responsive collapse for mobile)
+}

@@ -1,0 +1,9 @@
+<span class="d-inline-flex align-items-center gap-1 rounded px-2 py-1 border border-@Color-subtle bg-@Color-subtle text-@Color">
+    <i class="bi @Icon"></i> @Label
+</span>
+
+@code {
+    [Parameter, EditorRequired] public string Icon  { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public string Label { get; set; } = string.Empty;
+    [Parameter]                 public string Color { get; set; } = "primary";
+}
