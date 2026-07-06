@@ -1,77 +1,114 @@
 using Azure.Identity;
 using Azure.Messaging.ServiceBus;
-using LogisticsWeb.Services;
-using Microsoft.AspNetCore.Components.Web;
+using FluentValidation;
+using Microsoft.EntityFrameworkCore;
+using OrderService.Commands;
+using OrderService.Data;
+using OrderService.Endpoints;
+using OrderService.Messaging;
+using OrderService.Middleware;
+using OrderService.Queries;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // ══════════════════════════════════════════════════════════
-// 1. ZERO TRUST SECRET MANAGEMENT
-//    Managed Identity → Key Vault. No passwords in code.
+// 1. ZERO TRUST — Azure Key Vault via Managed Identity
+//    No passwords in appsettings.json or environment vars.
 // ══════════════════════════════════════════════════════════
 var keyVaultUri = builder.Configuration["Azure:KeyVaultUri"]
-    ?? throw new InvalidOperationException("Azure:KeyVaultUri is not configured.");
+    ?? throw new InvalidOperationException("Azure:KeyVaultUri must be configured.");
 
-// In production: DefaultAzureCredential uses the App Service Managed Identity.
-// In local dev:  falls back to Visual Studio / Azure CLI credentials.
-var azureCredential = new DefaultAzureCredential();
+// DefaultAzureCredential:
+//   Production  → App Service Managed Identity (assigned in Bicep)
+//   Development → VS / Azure CLI / Environment credentials
+var credential = new DefaultAzureCredential();
 
-builder.Configuration.AddAzureKeyVault(new Uri(keyVaultUri), azureCredential);
-
-// ══════════════════════════════════════════════════════════
-// 2. BLAZOR & RAZOR COMPONENTS
-// ══════════════════════════════════════════════════════════
-builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents();
+builder.Configuration.AddAzureKeyVault(new Uri(keyVaultUri), credential);
 
 // ══════════════════════════════════════════════════════════
-// 3. DISTRIBUTED CACHE — Azure Cache for Redis
-//    Used by InventoryService for sub-10ms read latency.
-//    Connection string fetched from Key Vault (no hardcoding).
+// 2. AZURE SQL — WRITE DbContext (primary endpoint)
+//    Connection string fetched from Key Vault.
+//    Authentication=Active Directory Managed Identity (no password).
 // ══════════════════════════════════════════════════════════
-var redisConnection = builder.Configuration["Redis--ConnectionString"]
-    ?? throw new InvalidOperationException("Redis--ConnectionString secret not found in Key Vault.");
+var writeConn = builder.Configuration["Sql--OrdersConnectionString"]
+    ?? throw new InvalidOperationException("Sql--OrdersConnectionString not found in Key Vault.");
 
-builder.Services.AddStackExchangeRedisCache(opts =>
-{
-    opts.Configuration = redisConnection;
-    opts.InstanceName   = "logistics:";
-});
+builder.Services.AddDbContext<OrderDbContext>(opts =>
+    opts.UseSqlServer(writeConn, sql =>
+    {
+        sql.EnableRetryOnFailure(
+            maxRetryCount: 5,
+            maxRetryDelay: TimeSpan.FromSeconds(30),
+            errorNumbersToAdd: null);
+        sql.CommandTimeout(30);
+    }));
 
 // ══════════════════════════════════════════════════════════
-// 4. AZURE SERVICE BUS CLIENT
-//    Passwordless auth via Managed Identity (no SAS keys).
-//    Used by OrderService to enqueue write commands.
+// 3. AZURE SQL — READ DbContext (secondary/read replica)
+//    Points at the Business Critical secondary endpoint.
+//    Registered as scoped so EF can pool connections per request.
+// ══════════════════════════════════════════════════════════
+var readConn = builder.Configuration["Sql--OrdersReadConnectionString"]
+    ?? throw new InvalidOperationException("Sql--OrdersReadConnectionString not found in Key Vault.");
+
+builder.Services.AddDbContext<OrderReadDbContext>(opts =>
+    opts.UseSqlServer(readConn, sql =>
+    {
+        sql.EnableRetryOnFailure(maxRetryCount: 3, maxRetryDelay: TimeSpan.FromSeconds(10), errorNumbersToAdd: null);
+        sql.CommandTimeout(60); // Read replica may run heavier queries
+    }));
+
+// ══════════════════════════════════════════════════════════
+// 4. AZURE SERVICE BUS — WRITE PATH
+//    Passwordless via Managed Identity (no SAS keys).
 // ══════════════════════════════════════════════════════════
 var sbNamespace = builder.Configuration["Azure:ServiceBus:FullyQualifiedNamespace"]
-    ?? throw new InvalidOperationException("Service Bus namespace is not configured.");
+    ?? throw new InvalidOperationException("Service Bus namespace not configured.");
 
-builder.Services.AddSingleton(_ =>
-    new ServiceBusClient(sbNamespace, azureCredential));
+builder.Services.AddSingleton(_ => new ServiceBusClient(sbNamespace, credential));
+builder.Services.AddSingleton<ServiceBusPublisher>();
 
 // ══════════════════════════════════════════════════════════
-// 5. DOWNSTREAM MICROSERVICE HTTP CLIENTS
-//    Typed clients routed to internal VNet endpoints.
-//    Resilience via exponential back-off retry (Polly).
+// 5. DOMAIN SERVICES
 // ══════════════════════════════════════════════════════════
-builder.Services.AddHttpClient<IOrderService, OrderApiService>(client =>
+builder.Services.AddScoped<OrderQueries>();
+builder.Services.AddValidatorsFromAssemblyContaining<CreateOrderCommandValidator>();
+
+// ══════════════════════════════════════════════════════════
+// 6. API INFRASTRUCTURE
+// ══════════════════════════════════════════════════════════
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(opts =>
 {
-    client.BaseAddress = new Uri(
-        builder.Configuration["Services:OrderApi"]
-        ?? throw new InvalidOperationException("Services:OrderApi not configured."));
-    client.Timeout = TimeSpan.FromSeconds(10);
+    opts.SwaggerDoc("v1", new()
+    {
+        Title       = "Order Microservice API",
+        Version     = "v1",
+        Description = "CQRS-based order processing service. Write path → Service Bus. " +
+                      "Read path → Azure SQL Business Critical (read replica)."
+    });
 });
 
-builder.Services.AddHttpClient<IInventoryService, InventoryApiService>(client =>
-{
-    client.BaseAddress = new Uri(
-        builder.Configuration["Services:InventoryApi"]
-        ?? throw new InvalidOperationException("Services:InventoryApi not configured."));
-    client.Timeout = TimeSpan.FromSeconds(10);
-});
+// ══════════════════════════════════════════════════════════
+// 7. HEALTH CHECKS
+//    Exposed at /health — monitored by Azure Container Apps.
+// ══════════════════════════════════════════════════════════
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<OrderDbContext>(
+        name: "azure-sql-write",
+        tags: ["db", "write"])
+    .AddDbContextCheck<OrderReadDbContext>(
+        name: "azure-sql-read",
+        tags: ["db", "read"])
+    .AddAzureServiceBusQueue(
+        fullyQualifiedNamespace: sbNamespace,
+        queueName: builder.Configuration["Azure:ServiceBus:OrderQueueName"]!,
+        tokenCredential: credential,
+        name: "service-bus",
+        tags: ["messaging"]);
 
 // ══════════════════════════════════════════════════════════
-// 6. APPLICATION INSIGHTS TELEMETRY
+// 8. TELEMETRY
 // ══════════════════════════════════════════════════════════
 builder.Services.AddApplicationInsightsTelemetry(opts =>
 {
@@ -79,21 +116,38 @@ builder.Services.AddApplicationInsightsTelemetry(opts =>
 });
 
 // ══════════════════════════════════════════════════════════
-// 7. BUILD & CONFIGURE PIPELINE
+// 9. BUILD & PIPELINE
 // ══════════════════════════════════════════════════════════
 var app = builder.Build();
 
-if (!app.Environment.IsDevelopment())
+// Auto-apply EF migrations on startup (safe for containerised deployments)
+// In production you may prefer a separate migration job — this is fine for dev.
+using (var scope = app.Services.CreateScope())
 {
-    app.UseExceptionHandler("/Error", createScopeForErrors: true);
-    app.UseHsts();
+    var db = scope.ServiceProvider.GetRequiredService<OrderDbContext>();
+    await db.Database.MigrateAsync();
+}
+
+app.UseMiddleware<ExceptionMiddleware>();
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI(opts =>
+    {
+        opts.SwaggerEndpoint("/swagger/v1/swagger.json", "Order Service v1");
+        opts.RoutePrefix = string.Empty; // Swagger at root in dev
+    });
 }
 
 app.UseHttpsRedirection();
-app.UseStaticFiles();
-app.UseAntiforgery();
 
-app.MapRazorComponents<LogisticsWeb.Components.App>()
-   .AddInteractiveServerRenderMode();
+// ── Map endpoints ─────────────────────────────────────────
+app.MapOrderWriteEndpoints();
+app.MapOrderReadEndpoints();
+
+app.MapHealthChecks("/health");
+app.MapHealthChecks("/health/ready",  new() { Predicate = check => check.Tags.Contains("db") });
+app.MapHealthChecks("/health/live",   new() { Predicate = _ => false });
 
 app.Run();
