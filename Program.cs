@@ -1,153 +1,109 @@
 using Azure.Identity;
-using Azure.Messaging.ServiceBus;
-using FluentValidation;
-using Microsoft.EntityFrameworkCore;
-using OrderService.Commands;
-using OrderService.Data;
-using OrderService.Endpoints;
-using OrderService.Messaging;
-using OrderService.Middleware;
-using OrderService.Queries;
+using Microsoft.Azure.Cosmos;
+using InventoryService.Data;
+using InventoryService.Endpoints;
+using InventoryService.Queries;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // ══════════════════════════════════════════════════════════
-// 1. ZERO TRUST — Azure Key Vault via Managed Identity
-//    No passwords in appsettings.json or environment vars.
+// 1. ZERO TRUST — Key Vault via Managed Identity
 // ══════════════════════════════════════════════════════════
 var keyVaultUri = builder.Configuration["Azure:KeyVaultUri"]
-    ?? throw new InvalidOperationException("Azure:KeyVaultUri must be configured.");
+    ?? throw new InvalidOperationException("Azure:KeyVaultUri must be set.");
 
-// DefaultAzureCredential:
-//   Production  → App Service Managed Identity (assigned in Bicep)
-//   Development → VS / Azure CLI / Environment credentials
 var credential = new DefaultAzureCredential();
-
 builder.Configuration.AddAzureKeyVault(new Uri(keyVaultUri), credential);
 
 // ══════════════════════════════════════════════════════════
-// 2. AZURE SQL — WRITE DbContext (primary endpoint)
-//    Connection string fetched from Key Vault.
-//    Authentication=Active Directory Managed Identity (no password).
+// 2. COSMOS DB — Managed Identity (no primary key)
+//    ConsistencyLevel.Session = default; reads from nearest region.
 // ══════════════════════════════════════════════════════════
-var writeConn = builder.Configuration["Sql--OrdersConnectionString"]
-    ?? throw new InvalidOperationException("Sql--OrdersConnectionString not found in Key Vault.");
+var cosmosEndpoint = builder.Configuration["Azure:CosmosDb:AccountEndpoint"]
+    ?? throw new InvalidOperationException("Cosmos DB endpoint not configured.");
 
-builder.Services.AddDbContext<OrderDbContext>(opts =>
-    opts.UseSqlServer(writeConn, sql =>
+builder.Services.AddSingleton(_ => new CosmosClient(
+    cosmosEndpoint,
+    credential,
+    new CosmosClientOptions
     {
-        sql.EnableRetryOnFailure(
-            maxRetryCount: 5,
-            maxRetryDelay: TimeSpan.FromSeconds(30),
-            errorNumbersToAdd: null);
-        sql.CommandTimeout(30);
+        SerializerOptions      = new CosmosSerializationOptions
+        {
+            PropertyNamingPolicy = CosmosPropertyNamingPolicy.CamelCase
+        },
+        // ApplicationPreferredRegions: route reads to the nearest replica.
+        // In prod: populate from environment variable set per Container Apps region.
+        ApplicationPreferredRegions = ["East US", "West Europe", "Southeast Asia"],
+        ConnectionMode = ConnectionMode.Direct,
+        MaxRetryAttemptsOnRateLimitedRequests = 9,
+        MaxRetryWaitTimeOnRateLimitedRequests = TimeSpan.FromSeconds(30)
     }));
 
-// ══════════════════════════════════════════════════════════
-// 3. AZURE SQL — READ DbContext (secondary/read replica)
-//    Points at the Business Critical secondary endpoint.
-//    Registered as scoped so EF can pool connections per request.
-// ══════════════════════════════════════════════════════════
-var readConn = builder.Configuration["Sql--OrdersReadConnectionString"]
-    ?? throw new InvalidOperationException("Sql--OrdersReadConnectionString not found in Key Vault.");
-
-builder.Services.AddDbContext<OrderReadDbContext>(opts =>
-    opts.UseSqlServer(readConn, sql =>
-    {
-        sql.EnableRetryOnFailure(maxRetryCount: 3, maxRetryDelay: TimeSpan.FromSeconds(10), errorNumbersToAdd: null);
-        sql.CommandTimeout(60); // Read replica may run heavier queries
-    }));
+builder.Services.AddSingleton<CosmosDbContext>();
 
 // ══════════════════════════════════════════════════════════
-// 4. AZURE SERVICE BUS — WRITE PATH
-//    Passwordless via Managed Identity (no SAS keys).
+// 3. REDIS — cache-aside, connection string from Key Vault
 // ══════════════════════════════════════════════════════════
-var sbNamespace = builder.Configuration["Azure:ServiceBus:FullyQualifiedNamespace"]
-    ?? throw new InvalidOperationException("Service Bus namespace not configured.");
+var redisConn = builder.Configuration["Redis--ConnectionString"]
+    ?? throw new InvalidOperationException("Redis--ConnectionString not found in Key Vault.");
 
-builder.Services.AddSingleton(_ => new ServiceBusClient(sbNamespace, credential));
-builder.Services.AddSingleton<ServiceBusPublisher>();
-
-// ══════════════════════════════════════════════════════════
-// 5. DOMAIN SERVICES
-// ══════════════════════════════════════════════════════════
-builder.Services.AddScoped<OrderQueries>();
-builder.Services.AddValidatorsFromAssemblyContaining<CreateOrderCommandValidator>();
+builder.Services.AddStackExchangeRedisCache(opts =>
+{
+    opts.Configuration = redisConn;
+    opts.InstanceName  = "inventory:";
+});
 
 // ══════════════════════════════════════════════════════════
-// 6. API INFRASTRUCTURE
+// 4. DOMAIN SERVICES
+// ══════════════════════════════════════════════════════════
+builder.Services.AddScoped<InventoryQueries>();
+
+// ══════════════════════════════════════════════════════════
+// 5. API INFRASTRUCTURE
 // ══════════════════════════════════════════════════════════
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(opts =>
-{
     opts.SwaggerDoc("v1", new()
     {
-        Title       = "Order Microservice API",
+        Title       = "Inventory Service API",
         Version     = "v1",
-        Description = "CQRS-based order processing service. Write path → Service Bus. " +
-                      "Read path → Azure SQL Business Critical (read replica)."
-    });
-});
+        Description = "Pure read service. Data served from Redis → Cosmos DB. " +
+                      "Never touches Azure SQL — eliminates Noisy Neighbor."
+    }));
+
+builder.Services.AddApplicationInsightsTelemetry(opts =>
+    opts.ConnectionString = builder.Configuration["AppInsights--ConnectionString"]);
 
 // ══════════════════════════════════════════════════════════
-// 7. HEALTH CHECKS
-//    Exposed at /health — monitored by Azure Container Apps.
+// 6. HEALTH CHECKS
 // ══════════════════════════════════════════════════════════
 builder.Services.AddHealthChecks()
-    .AddDbContextCheck<OrderDbContext>(
-        name: "azure-sql-write",
-        tags: ["db", "write"])
-    .AddDbContextCheck<OrderReadDbContext>(
-        name: "azure-sql-read",
-        tags: ["db", "read"])
-    .AddAzureServiceBusQueue(
-        fullyQualifiedNamespace: sbNamespace,
-        queueName: builder.Configuration["Azure:ServiceBus:OrderQueueName"]!,
-        tokenCredential: credential,
-        name: "service-bus",
-        tags: ["messaging"]);
+    .AddCosmosDb(
+        sp => sp.GetRequiredService<CosmosClient>(),
+        name: "cosmos-db",
+        tags: ["db"])
+    .AddRedis(
+        redisConn,
+        name: "redis",
+        tags: ["cache"]);
 
 // ══════════════════════════════════════════════════════════
-// 8. TELEMETRY
-// ══════════════════════════════════════════════════════════
-builder.Services.AddApplicationInsightsTelemetry(opts =>
-{
-    opts.ConnectionString = builder.Configuration["AppInsights--ConnectionString"];
-});
-
-// ══════════════════════════════════════════════════════════
-// 9. BUILD & PIPELINE
+// 7. BUILD & PIPELINE
 // ══════════════════════════════════════════════════════════
 var app = builder.Build();
-
-// Auto-apply EF migrations on startup (safe for containerised deployments)
-// In production you may prefer a separate migration job — this is fine for dev.
-using (var scope = app.Services.CreateScope())
-{
-    var db = scope.ServiceProvider.GetRequiredService<OrderDbContext>();
-    await db.Database.MigrateAsync();
-}
-
-app.UseMiddleware<ExceptionMiddleware>();
 
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
-    app.UseSwaggerUI(opts =>
-    {
-        opts.SwaggerEndpoint("/swagger/v1/swagger.json", "Order Service v1");
-        opts.RoutePrefix = string.Empty; // Swagger at root in dev
-    });
+    app.UseSwaggerUI(o => { o.RoutePrefix = string.Empty; });
 }
 
 app.UseHttpsRedirection();
 
-// ── Map endpoints ─────────────────────────────────────────
-app.MapOrderWriteEndpoints();
-app.MapOrderReadEndpoints();
+app.MapInventoryEndpoints();
 
 app.MapHealthChecks("/health");
-app.MapHealthChecks("/health/ready",  new() { Predicate = check => check.Tags.Contains("db") });
-app.MapHealthChecks("/health/live",   new() { Predicate = _ => false });
+app.MapHealthChecks("/health/ready", new() { Predicate = c => c.Tags.Contains("db") });
+app.MapHealthChecks("/health/live",  new() { Predicate = _ => false });
 
 app.Run();

@@ -1,0 +1,17 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+
+
+    "AzureWebJobsServiceBus": "Endpoint=sb://sb-logistics-dev.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=DEV_KEY_ONLY",
+
+
+    "Azure__KeyVaultUri": "https://kv-logistics-dev.vault.azure.net/",
+
+
+    "Sql__OrdersConnectionString": "Server=tcp:localhost,1433;Database=OrdersDb;User Id=sa;Password=YourDevPassword!;TrustServerCertificate=True;",
+    "AppInsights__ConnectionString": ""
+  }
+}
