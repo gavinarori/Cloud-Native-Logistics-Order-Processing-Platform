@@ -1,0 +1,40 @@
+{
+  "version": "2.0",
+  "logging": {
+    "applicationInsights": {
+      "samplingSettings": {
+        "isEnabled": true,
+        "maxTelemetryItemsPerSecond": 20,
+        "excludedTypes": "Request"
+      }
+    },
+    "logLevel": {
+      "default": "Information",
+      "OrderWorkerFunction": "Information",
+      "Microsoft.EntityFrameworkCore": "Warning"
+    }
+  },
+
+  "extensions": {
+    "serviceBus": {
+
+      "maxConcurrentSessions": 8,
+      "maxConcurrentCallsPerSession": 1,
+      "sessionIdleTimeoutInSeconds": 30,
+
+     
+      "maxAutoLockRenewalDuration": "00:05:00",
+
+      "prefetchCount": 10,
+      "transportType": "AmqpWebSockets"
+    }
+  },
+
+  "retry": {
+
+    "strategy": "exponentialBackoff",
+    "maxRetryCount": 3,
+    "minimumInterval": "00:00:02",
+    "maximumInterval": "00:00:30"
+  }
+}
