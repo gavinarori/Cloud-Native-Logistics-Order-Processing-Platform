@@ -1,8 +1,0 @@
-/Users/mac/Desktop/learn/BlazorApp1/BlazorApp1/obj/Debug/net8.0/BlazorApp1.csproj.AssemblyReference.cache
-/Users/mac/Desktop/learn/BlazorApp1/BlazorApp1/obj/Debug/net8.0/rpswa.dswa.cache.json
-/Users/mac/Desktop/learn/BlazorApp1/BlazorApp1/obj/Debug/net8.0/BlazorApp1.GeneratedMSBuildEditorConfig.editorconfig
-/Users/mac/Desktop/learn/BlazorApp1/BlazorApp1/obj/Debug/net8.0/BlazorApp1.AssemblyInfoInputs.cache
-/Users/mac/Desktop/learn/BlazorApp1/BlazorApp1/obj/Debug/net8.0/BlazorApp1.AssemblyInfo.cs
-/Users/mac/Desktop/learn/BlazorApp1/BlazorApp1/obj/Debug/net8.0/BlazorApp1.csproj.CoreCompileInputs.cache
-/Users/mac/Desktop/learn/BlazorApp1/BlazorApp1/obj/Debug/net8.0/BlazorApp1.MvcApplicationPartsAssemblyInfo.cache
-/Users/mac/Desktop/learn/BlazorApp1/BlazorApp1/obj/Debug/net8.0/BlazorApp1.sourcelink.json

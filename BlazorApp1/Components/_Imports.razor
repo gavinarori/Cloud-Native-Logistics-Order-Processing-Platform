@@ -1,0 +1,16 @@
+@using Microsoft.AspNetCore.Components.Routing
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.AspNetCore.Components.Web.Virtualization
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.JSInterop
+@using static Microsoft.AspNetCore.Components.Web.RenderMode
+
+@* These @using directives must match the RootNamespace set in the .csproj.
+   Because we set <RootNamespace>LogisticsWeb</RootNamespace>, these resolve
+   correctly even though the project file is named BlazorApp1. *@
+
+@using LogisticsWeb.Components
+@using LogisticsWeb.Components.Layout
+@using LogisticsWeb.Components.Pages        @* Fixes NotFound resolution in Routes.razor *@
+@using LogisticsWeb.Models
+@using LogisticsWeb.Services

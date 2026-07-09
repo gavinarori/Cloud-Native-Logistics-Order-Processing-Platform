@@ -1,0 +1,45 @@
+@* ReconnectModal.razor
+   Shown by Blazor Server when the SignalR connection to the server drops.
+   The original file used the .NET 9 Assets API which doesn't exist in .NET 8.
+   This is the correct .NET 8 version. *@
+
+<div id="components-reconnect-modal">
+    <div class="reconnect-modal-container">
+        <div class="modal fade show d-block" tabindex="-1" role="dialog">
+            <div class="modal-dialog modal-dialog-centered" role="document">
+                <div class="modal-content shadow-lg border-0">
+
+                    <div class="modal-header border-0 pb-0">
+                        <h5 class="modal-title text-warning">
+                            <i class="bi bi-wifi-off me-2"></i>Connection Lost
+                        </h5>
+                    </div>
+
+                    <div class="modal-body">
+                        <p class="text-muted mb-3">
+                            The connection to the server was interrupted.
+                            Attempting to reconnect&hellip;
+                        </p>
+                        <div class="d-flex align-items-center gap-2">
+                            <div class="spinner-border spinner-border-sm text-primary" role="status">
+                                <span class="visually-hidden">Reconnecting...</span>
+                            </div>
+                            <span class="text-muted" style="font-size:0.85rem">
+                                Reconnecting to LogiOps server
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="modal-footer border-0 pt-0">
+                        <button class="btn btn-sm btn-outline-primary"
+                                onclick="window.location.reload()">
+                            <i class="bi bi-arrow-clockwise me-1"></i>Reload page
+                        </button>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+        <div class="modal-backdrop fade show"></div>
+    </div>
+</div>

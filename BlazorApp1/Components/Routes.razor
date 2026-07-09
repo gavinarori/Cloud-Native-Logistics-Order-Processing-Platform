@@ -1,0 +1,17 @@
+<Router AppAssembly="typeof(Program).Assembly">
+    <Found Context="routeData">
+        <RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
+        <FocusOnNavigate RouteData="routeData" Selector="h1" />
+    </Found>
+    <NotFound>
+        <PageTitle>Not Found | LogiOps</PageTitle>
+        <LayoutView Layout="typeof(Layout.MainLayout)">
+            <!--
+              FIX: Use the short component name, not the fully-qualified name.
+              Because _Imports.razor adds @using LogisticsWeb.Components.Pages,
+              Blazor already knows where NotFound lives.
+            -->
+            <NotFound />
+        </LayoutView>
+    </NotFound>
+</Router>
