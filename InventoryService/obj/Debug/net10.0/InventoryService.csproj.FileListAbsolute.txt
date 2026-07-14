@@ -1,0 +1,1 @@
+/Users/mac/Desktop/learn/BlazorApp1/InventoryService/obj/Debug/net10.0/InventoryService.csproj.AssemblyReference.cache
